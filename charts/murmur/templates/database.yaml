@@ -1,0 +1,22 @@
+{{- if .Values.database.cnpg.enabled }}
+# CloudNativePG creates the Secret <name>-db-app (key "uri") the pods use.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ include "murmur.fullname" . }}-db
+  labels: {{- include "murmur.labels" . | nindent 4 }}
+spec:
+  instances: {{ .Values.database.cnpg.instances }}
+  {{- with .Values.database.cnpg.imageName }}
+  imageName: {{ . }}
+  {{- end }}
+  bootstrap:
+    initdb:
+      database: app
+      owner: app
+  storage:
+    size: {{ .Values.database.cnpg.storage.size }}
+    {{- with .Values.database.cnpg.storage.storageClass }}
+    storageClass: {{ . }}
+    {{- end }}
+{{- end }}

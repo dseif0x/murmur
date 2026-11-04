@@ -1,0 +1,84 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "murmur.fullname" . }}
+  labels: {{- include "murmur.labels" . | nindent 4 }}
+automountServiceAccountToken: {{ .Values.worker.runNowButton }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "murmur.fullname" . }}
+  labels:
+    {{- include "murmur.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  replicas: {{ .Values.server.replicas }}
+  selector:
+    matchLabels:
+      {{- include "murmur.selector" . | nindent 6 }}
+      app.kubernetes.io/component: server
+  template:
+    metadata:
+      labels:
+        {{- include "murmur.selector" . | nindent 8 }}
+        app.kubernetes.io/component: server
+    spec:
+      serviceAccountName: {{ include "murmur.fullname" . }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: server
+          image: {{ include "murmur.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["serve"]
+          securityContext: {{- toYaml .Values.securityContext | nindent 12 }}
+          env:
+            {{- include "murmur.commonEnv" . | nindent 12 }}
+            - name: RETENTION_DAYS
+              value: {{ .Values.retentionDays | quote }}
+            {{- if .Values.ingestTokens.existingSecret }}
+            - name: INGEST_TOKENS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.ingestTokens.existingSecret }}
+                  key: {{ .Values.ingestTokens.key }}
+            {{- end }}
+            {{- if .Values.worker.runNowButton }}
+            - name: WORKER_CRONJOB
+              value: {{ include "murmur.fullname" . }}-worker
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 30
+            # the first start waits up to two minutes each for Postgres and NATS
+            initialDelaySeconds: 240
+          resources: {{- toYaml .Values.server.resources | nindent 12 }}
+      {{- with .Values.server.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.server.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.server.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "murmur.fullname" . }}
+  labels: {{- include "murmur.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "murmur.selector" . | nindent 4 }}
+    app.kubernetes.io/component: server
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

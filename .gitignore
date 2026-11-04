@@ -1,0 +1,8 @@
+web/node_modules/
+web/dist/
+mac/.build/
+mac/build/
+*.xcuserstate
+.DS_Store
+charts/*/charts/
+charts/*/Chart.lock

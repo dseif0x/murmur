@@ -1,0 +1,111 @@
+image:
+  repository: ghcr.io/dseif0x/murmur
+  # tag defaults to the chart's appVersion; a digest wins over the tag
+  tag: ""
+  digest: ""
+  pullPolicy: IfNotPresent
+
+# IANA time zone: relative dates in speech ("tomorrow at five") are resolved
+# in it, and the timeline's days follow it.
+timezone: Europe/Vienna
+
+# Transcripts older than this are deleted (items keep their evidence quote).
+# 0 keeps everything.
+retentionDays: 30
+
+# Bearer tokens devices upload with: a Secret whose key holds one or more
+# tokens, comma- or newline-separated.
+ingestTokens:
+  existingSecret: ""
+  key: tokens
+
+server:
+  replicas: 1
+  resources:
+    requests: {cpu: 10m, memory: 32Mi}
+    limits: {memory: 256Mi}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+worker:
+  # How often the worker looks for new transcripts. A run with nothing new
+  # exits at once, without calling the model.
+  schedule: "*/30 * * * *"
+  # Kill a run that takes longer than this (a cold GPU backend can take a
+  # couple of minutes to answer the first request).
+  activeDeadlineSeconds: 3600
+  # OpenAI-compatible endpoint and model (LiteLLM in the cluster).
+  llmBaseURL: http://litellm.llama.svc.cluster.local:4000/v1
+  model: qwen3.8-flash-next-iq3
+  llmApiKey:
+    existingSecret: ""
+    key: api-key
+  # Language of item titles/details; empty = the language spoken.
+  outputLanguage: ""
+  # Extra instructions appended to the system prompt.
+  extraPrompt: ""
+  # Send chat_template_kwargs.enable_thinking=false (for reasoning models
+  # that support it).
+  disableThinking: false
+  maxCharsPerCall: 24000
+  maxTranscriptsPerRun: 1000
+  # Let the web UI start a run now (a Job from the CronJob; adds a Role).
+  runNowButton: true
+  resources:
+    requests: {cpu: 10m, memory: 32Mi}
+    limits: {memory: 256Mi}
+  nodeSelector: {}
+  tolerations: []
+
+database:
+  # A CloudNativePG Cluster created by this chart (needs the CNPG operator).
+  cnpg:
+    enabled: true
+    instances: 1
+    imageName: ""
+    storage:
+      size: 2Gi
+      storageClass: ""
+  # Otherwise: a Secret holding a postgres:// URL.
+  external:
+    existingSecret: ""
+    key: uri
+
+# NATS with JetStream (the nats chart). Set nats.enabled=false and natsUrl
+# to use an existing server.
+natsUrl: ""
+nats:
+  enabled: true
+  config:
+    jetstream:
+      enabled: true
+      fileStore:
+        pvc:
+          size: 2Gi
+  natsBox:
+    enabled: false
+
+ingress:
+  enabled: false
+  className: ""
+  host: ""
+  tls: []
+  # Web UI and its /api: put your login (forward auth) here.
+  annotations: {}
+  # Device uploads (/v1): token-authenticated, so without the login.
+  ingest:
+    enabled: true
+    annotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]

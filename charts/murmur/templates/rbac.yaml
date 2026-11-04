@@ -1,0 +1,30 @@
+{{- if .Values.worker.runNowButton }}
+# The web UI's "Run" button: a Job from the worker CronJob.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "murmur.fullname" . }}-run-now
+  labels: {{- include "murmur.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["batch"]
+    resources: ["cronjobs"]
+    resourceNames: [{{ printf "%s-worker" (include "murmur.fullname" .) | quote }}]
+    verbs: ["get"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "murmur.fullname" . }}-run-now
+  labels: {{- include "murmur.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "murmur.fullname" . }}-run-now
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "murmur.fullname" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

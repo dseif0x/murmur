@@ -1,0 +1,48 @@
+name: Release Helm chart
+
+on:
+  push:
+    branches: [main]
+    paths: ['charts/**']
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+      - name: Ensure gh-pages branch exists
+        run: |
+          if ! git ls-remote --exit-code --heads origin gh-pages >/dev/null; then
+            git checkout --orphan gh-pages
+            git rm -rf . >/dev/null
+            git commit --allow-empty -m "Initialize gh-pages for Helm chart repository"
+            git push origin gh-pages
+            git checkout -f "${GITHUB_REF_NAME}"
+          fi
+
+      - uses: azure/setup-helm@v4
+
+      - name: Chart dependencies
+        run: |
+          helm repo add nats https://nats-io.github.io/k8s/helm/charts/
+          helm dependency build charts/murmur
+
+      - name: Lint chart
+        run: helm lint charts/murmur
+
+      - name: Run chart-releaser
+        uses: helm/chart-releaser-action@v1.7.0
+        with:
+          skip_existing: true
+        env:
+          CR_TOKEN: '${{ secrets.GITHUB_TOKEN }}'

@@ -1,0 +1,13 @@
+murmur is starting.
+
+{{- if .Values.ingress.enabled }}
+Web UI:  https://{{ .Values.ingress.host }}/
+Devices: https://{{ .Values.ingress.host }}/v1/transcripts (bearer token)
+{{- else }}
+kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "murmur.fullname" . }} 8080:80
+{{- end }}
+{{- if not .Values.ingestTokens.existingSecret }}
+
+No ingestTokens.existingSecret set: devices can't upload yet.
+{{- end }}
+The worker runs on "{{ .Values.worker.schedule }}" ({{ .Values.timezone }}) with model {{ .Values.worker.model }}.
