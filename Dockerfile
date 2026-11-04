@@ -7,7 +7,7 @@ COPY web/ ./
 RUN npm run build
 
 # ---- server (cross-compiled on the build host) ----
-FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS server
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS server
 ARG TARGETOS TARGETARCH
 WORKDIR /src
 COPY server/go.mod server/go.sum ./
