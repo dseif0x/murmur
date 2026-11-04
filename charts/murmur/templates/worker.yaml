@@ -43,6 +43,8 @@ spec:
                     secretKeyRef:
                       name: {{ .Values.worker.llmApiKey.existingSecret }}
                       key: {{ .Values.worker.llmApiKey.key }}
+                      # runs without pending work never need it
+                      optional: true
                 {{- end }}
                 - name: OUTPUT_LANGUAGE
                   value: {{ .Values.worker.outputLanguage | quote }}
