@@ -1,0 +1,51 @@
+name: Mac app
+
+on:
+  push:
+    branches: [main]
+    paths: ['mac/**', '.github/workflows/mac.yml']
+    tags: ['mac-v*']
+  pull_request:
+    paths: ['mac/**', '.github/workflows/mac.yml']
+
+jobs:
+  build:
+    runs-on: macos-15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Xcode 26 (Swift 6.2)
+        run: |
+          XC=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$XC" ]; then ls /Applications | grep -i xcode; exit 1; fi
+          sudo xcode-select -s "$XC"
+          swift --version
+
+      - name: Build
+        working-directory: mac
+        env:
+          VERSION: ${{ startsWith(github.ref, 'refs/tags/mac-v') && github.ref_name || '0.1.0' }}
+          BUILD: ${{ github.run_number }}
+        run: |
+          VERSION="${VERSION#mac-v}" ./scripts/build-app.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Murmur
+          path: mac/build/Murmur.zip
+
+      - name: Publish (rolling "mac-latest" from main, or the tag)
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            gh release create "$GITHUB_REF_NAME" mac/build/Murmur.zip --title "Murmur for Mac ${GITHUB_REF_NAME#mac-v}" --notes "Unzip, move Murmur.app to Applications, right-click → Open the first time (it isn't notarized)."
+          else
+            gh release delete mac-latest --yes --cleanup-tag 2>/dev/null || true
+            gh release create mac-latest mac/build/Murmur.zip --prerelease --target "$GITHUB_SHA" \
+              --title "Murmur for Mac (latest build)" \
+              --notes "Built from ${GITHUB_SHA::7}. Unzip, move Murmur.app to Applications, right-click → Open the first time (it isn't notarized)."
+          fi
