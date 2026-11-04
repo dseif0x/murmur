@@ -67,6 +67,8 @@ database:
     storage:
       size: 2Gi
       storageClass: ""
+    # more Cluster spec fields (enablePDB, affinity, resources, backup, ...)
+    extraSpec: {}
   # Otherwise: a Secret holding a postgres:// URL.
   external:
     existingSecret: ""

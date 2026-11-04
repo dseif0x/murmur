@@ -19,4 +19,7 @@ spec:
     {{- with .Values.database.cnpg.storage.storageClass }}
     storageClass: {{ . }}
     {{- end }}
+  {{- with .Values.database.cnpg.extraSpec }}
+  {{- toYaml . | nindent 2 }}
+  {{- end }}
 {{- end }}
