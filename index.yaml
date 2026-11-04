@@ -1,0 +1,24 @@
+apiVersion: v1
+entries:
+  murmur:
+  - apiVersion: v2
+    appVersion: 0.1.0
+    created: "2026-11-04T23:43:12.407855336Z"
+    dependencies:
+    - condition: nats.enabled
+      name: nats
+      repository: https://nats-io.github.io/k8s/helm/charts/
+      version: 2.15.2
+    description: Turns what you say through the day into reminders, todos, events
+      and notes (ingest API, web UI, LLM worker CronJob, Postgres via CloudNativePG,
+      NATS JetStream)
+    digest: 145e15c77ef2329371f8025648c8f5e1cf15c8937231dba70a08576358897218
+    home: https://github.com/dseif0x/murmur
+    name: murmur
+    sources:
+    - https://github.com/dseif0x/murmur
+    type: application
+    urls:
+    - https://github.com/dseif0x/murmur/releases/download/murmur-0.1.1/murmur-0.1.1.tgz
+    version: 0.1.1
+generated: "2026-11-04T23:43:12.407862057Z"
