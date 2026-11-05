@@ -15,6 +15,17 @@
 * {
   box-sizing: border-box;
 }
+/* iOS samples the colour at the very top edge for the installed app's status
+   bar; a real, painted element must sit there. See index.html. */
+#status-bar-fill {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  z-index: 1000;
+  background-color: var(--bg);
+}
 html,
 body {
   margin: 0;

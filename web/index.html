@@ -5,11 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0d0f14" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <!-- Opaque status bar: from iOS 26 the system lays a Liquid Glass blur
+         over the top of a black-translucent web app (much stronger since
+         iOS 27), and only this setting is free of it. iOS reads the tag when
+         the app is added to the home screen: remove and re-add the icon.
+         The bar's colour comes from #status-bar-fill below (the installed
+         app no longer reads theme-color). -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="murmur" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/icons/icon-192.png" type="image/png" sizes="192x192" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <title>murmur</title>
   </head>
   <body>
+    <!-- A real element (pseudo-elements don't count) for iOS to sample the
+         installed app's status bar colour from; styled in app.css. -->
+    <div id="status-bar-fill" aria-hidden="true"></div>
     <div id="app"></div>
     <script type="module" src="/src/main.js"></script>
   </body>
