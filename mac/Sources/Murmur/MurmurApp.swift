@@ -90,7 +90,7 @@ struct MenuView: View {
             }
         }
         .padding(14)
-        .frame(width: 360)
+        .frame(width: 400)
     }
 
     @ViewBuilder private var uploadStatus: some View {
@@ -145,12 +145,15 @@ struct SettingsView: View {
                 }
             }
             Section("Listening") {
-                Picker("Push to talk key", selection: $model.pttKey) {
+                Picker("Push-to-talk / Toggle key", selection: $model.pttKey) {
                     ForEach(HoldKey.Key.allCases) { Text($0.label).tag($0) }
                 }
-                if model.mode == .ptt && !HoldKey.trusted {
+                Text("Push to talk records while the key is held. Toggle starts on one press and stops on the next.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if model.mode.usesKey && !HoldKey.trusted {
                     HStack {
-                        Text("Push to talk needs the Accessibility permission.")
+                        Text("This mode needs the Accessibility permission.")
                             .font(.callout)
                             .foregroundStyle(.orange)
                         Button("Grant…") { HoldKey.askForPermission() }

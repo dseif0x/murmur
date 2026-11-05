@@ -7,6 +7,9 @@ server.
   speech into utterances; each is transcribed on the Mac.
 - **Push to talk**: hold a key (Right ⌥ by default; needs the Accessibility
   permission) and talk; releasing sends it.
+- **Toggle**: like push to talk, but the key toggles. One press starts
+  recording, the next press stops and sends it — no holding. Uses the same key
+  and the same Accessibility permission.
 - **Off**: the microphone is closed.
 
 Speech recognition is **Parakeet TDT v3** on the Neural Engine via
