@@ -6,15 +6,18 @@ import ServiceManagement
 @MainActor
 final class AppModel: ObservableObject {
     enum Mode: String, CaseIterable, Identifiable {
-        case always, ptt, off
+        case always, ptt, toggle, off
         var id: String { rawValue }
         var label: String {
             switch self {
             case .always: return "Always"
             case .ptt: return "Push to talk"
+            case .toggle: return "Toggle"
             case .off: return "Off"
             }
         }
+        /// Modes driven by the hotkey (press to record), as opposed to ambient listening.
+        var usesKey: Bool { self == .ptt || self == .toggle }
     }
 
     enum Phase: Equatable {
@@ -23,8 +26,8 @@ final class AppModel: ObservableObject {
         case off
         case listening // always mode, quiet
         case hearing // always mode, someone speaks
-        case waitingForKey // push to talk, key up
-        case recording // push to talk, key held
+        case waitingForKey // push to talk / toggle, idle
+        case recording // push to talk key held, or toggle armed
         case error(String)
     }
 
@@ -33,7 +36,7 @@ final class AppModel: ObservableObject {
     @Published var serverURL: String { didSet { defaults.set(serverURL, forKey: "serverURL") } }
     @Published var token: String { didSet { Keychain.setToken(token) } }
     @Published var deviceName: String { didSet { defaults.set(deviceName, forKey: "deviceName") } }
-    @Published var pttKey: HoldKey.Key { didSet { defaults.set(pttKey.rawValue, forKey: "pttKey"); if mode == .ptt { apply() } } }
+    @Published var pttKey: HoldKey.Key { didSet { defaults.set(pttKey.rawValue, forKey: "pttKey"); if mode.usesKey { apply() } } }
     @Published var sensitivity: Double { didSet { defaults.set(sensitivity, forKey: "sensitivity") } }
     @Published var launchAtLogin: Bool = SMAppService.mainApp.status == .enabled
 
@@ -87,8 +90,8 @@ final class AppModel: ObservableObject {
         case .off: return "Microphone off"
         case .listening: return transcribing > 0 ? "Transcribing…" : "Listening"
         case .hearing: return "Hearing speech…"
-        case .waitingForKey: return "Hold \(pttKey.label) to talk"
-        case .recording: return "Recording… release to send"
+        case .waitingForKey: return mode == .toggle ? "Press \(pttKey.label) to start" : "Hold \(pttKey.label) to talk"
+        case .recording: return mode == .toggle ? "Recording… press \(pttKey.label) to stop" : "Recording… release to send"
         case let .error(msg): return msg
         }
     }
@@ -136,6 +139,14 @@ final class AppModel: ObservableObject {
             hold.onUp = { [weak self] in self?.pttUp() }
             hold.start()
             phase = .waitingForKey
+        case .toggle:
+            if !HoldKey.trusted { HoldKey.askForPermission() }
+            hold.key = pttKey
+            // Toggle on each press of the key; the release is ignored.
+            hold.onDown = { [weak self] in self?.toggleTap() }
+            hold.onUp = nil
+            hold.start()
+            phase = .waitingForKey
         }
     }
 
@@ -176,7 +187,27 @@ final class AppModel: ObservableObject {
     }
 
     private func pttDown() {
-        guard mode == .ptt, phase != .recording else { return }
+        guard mode == .ptt else { return }
+        beginKeyRecording()
+    }
+
+    private func pttUp() {
+        guard mode == .ptt else { return }
+        endKeyRecording()
+    }
+
+    // Toggle mode: the first press arms recording, the next one stops and sends it.
+    private func toggleTap() {
+        guard mode == .toggle else { return }
+        if phase == .recording {
+            endKeyRecording()
+        } else {
+            beginKeyRecording()
+        }
+    }
+
+    private func beginKeyRecording() {
+        guard phase != .recording else { return }
         do {
             let stream = try mic.start()
             pttSamples = []
@@ -192,7 +223,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func pttUp() {
+    private func endKeyRecording() {
         guard phase == .recording else { return }
         // a short tail: the last syllable often ends after the key comes up
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
@@ -202,10 +233,11 @@ final class AppModel: ObservableObject {
             self.mic.stop()
             let samples = self.pttSamples
             self.pttSamples = []
-            if self.mode == .ptt { self.phase = .waitingForKey }
+            if self.mode.usesKey { self.phase = .waitingForKey }
             guard samples.count > Segmenter.rate / 3 else { return }
             let seg = SpeechSegment(samples: samples, startedAt: self.pttStart,
                                     endedAt: self.pttStart.addingTimeInterval(Double(samples.count) / Double(Segmenter.rate)))
+            // the server stores only "always" vs "ptt"; toggle is a manual capture too
             Task { await self.process(seg, mode: "ptt") }
         }
     }
