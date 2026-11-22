@@ -55,6 +55,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var recent: [Segment] = []
     @Published private(set) var upload = Uploader.Status()
     @Published private(set) var transcribing = 0
+    /// The speech model is downloaded and Core ML compiles it for this device.
+    @Published private(set) var preparingModel = false
 
     private let defaults = UserDefaults.standard
     private let mic = MicCapture()
@@ -98,7 +100,11 @@ final class AppModel: ObservableObject {
     var statusText: String {
         switch phase {
         case .starting: return "Starting…"
-        case let .loadingModel(p): return p > 0 && p < 1 ? "Downloading the speech model… \(Int(p * 100))%" : "Loading the speech model…"
+        case let .loadingModel(p):
+            if preparingModel {
+                return "Preparing the speech model for this Mac (one time, can take a few minutes)…"
+            }
+            return p > 0 && p < 1 ? "Downloading the speech model… \(Int(min(p, 0.5) * 200))%" : "Loading the speech model…"
         case .off: return "Microphone off"
         case .listening: return transcribing > 0 ? "Transcribing…" : "Listening"
         case .hearing: return "Hearing speech…"
@@ -119,11 +125,13 @@ final class AppModel: ObservableObject {
         }
         phase = .loadingModel(0)
         do {
-            try await transcriber.load { [weak self] p in
+            try await transcriber.load { [weak self] p, compiling in
                 Task { @MainActor in
+                    self?.preparingModel = compiling
                     if case .loadingModel = self?.phase { self?.phase = .loadingModel(p) }
                 }
             }
+            preparingModel = false
             let vad = try await VadManager(config: VadConfig(defaultThreshold: Float(sensitivity)))
             segmenter = await Segmenter(vad: vad, threshold: Float(sensitivity))
             await tagger.setProfile(voiceProfile?.embedding)

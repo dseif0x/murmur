@@ -198,10 +198,15 @@ actor Transcriber {
     private var asr: AsrManager?
     private(set) var ready = false
 
-    func load(progress: @escaping @Sendable (Double) -> Void) async throws {
+    /// progress: fraction (0-0.5 download, 0.5-1 Core ML compile, as FluidAudio
+    /// reports it) and whether it's compiling: the one-time on-device
+    /// compilation for the Neural Engine, which can take minutes on its own.
+    func load(progress: @escaping @Sendable (Double, Bool) -> Void) async throws {
         if ready { return }
         let models = try await AsrModels.downloadAndLoad(version: .v3, progressHandler: { p in
-            progress(p.fractionCompleted)
+            var compiling = false
+            if case .compiling = p.phase { compiling = true }
+            progress(p.fractionCompleted, compiling)
         })
         let manager = AsrManager(config: .default)
         try await manager.loadModels(models)
