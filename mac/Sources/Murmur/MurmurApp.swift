@@ -65,6 +65,7 @@ struct MenuView: View {
                                 HStack(spacing: 4) {
                                     Text(seg.startedAt, style: .time)
                                     if seg.mode == "ptt" { Image(systemName: "mic.fill") }
+                                    if let s = seg.speaker { Text("· " + s) }
                                 }
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
@@ -171,6 +172,45 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+            }
+            Section("Speakers") {
+                Picker("Speakers", selection: $model.speakerMode) {
+                    ForEach(SpeakerMode.allCases) { Text($0.label).tag($0) }
+                }
+                Text(model.speakerMode.explanation)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                HStack {
+                    if let p = model.voiceProfile {
+                        Label("Your voice is recorded (" + p.createdAt.formatted(date: .abbreviated, time: .omitted) + ")", systemImage: "person.wave.2")
+                            .font(.callout)
+                    } else {
+                        Text("No voice recorded yet.").font(.callout).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    switch model.enrollment {
+                    case let .recording(left):
+                        Text("Speak normally… \(left) s").font(.callout).foregroundStyle(.orange)
+                    case .processing:
+                        ProgressView().controlSize(.small)
+                    default:
+                        Button(model.voiceProfile == nil ? "Record my voice" : "Record again") { model.enrollVoice() }
+                        if model.voiceProfile != nil {
+                            Button("Delete", role: .destructive) { model.deleteVoiceProfile() }
+                        }
+                    }
+                }
+                if case let .failed(msg) = model.enrollment {
+                    Text(msg).font(.caption).foregroundStyle(.red)
+                }
+                if model.speakerMode.needsProfile && model.voiceProfile == nil {
+                    Text("Record your voice first: until then nothing is dropped.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+                Text("Records 12 seconds of you speaking (read something aloud) and keeps only a voice fingerprint, no audio. Speaker detection runs on this Mac.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             Section("General") {
                 Toggle("Open at login", isOn: Binding(

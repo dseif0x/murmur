@@ -40,6 +40,25 @@ Turns what you say through the day into reminders, todos, events and notes.
   `murmur.items.created` and `murmur.items.updated`, so other things can hook
   in later. **Postgres** stores everything; no object store.
 
+## Speakers
+
+Both apps can attribute what was said to speakers (Settings → Speakers), on
+the device with FluidAudio's CAM++ speaker-embedding model (~30 MB,
+downloaded on first use):
+
+- **Off** (default): transcripts carry no speaker.
+- **Label speakers:** each transcript is marked `me` or `speaker 2`,
+  `speaker 3`, … (numbered per conversation; a 10-minute silence starts over).
+- **Only my voice:** only what you say is kept; other voices are recognised on
+  the device and dropped before anything is uploaded.
+
+"me" is your voice, recorded once in the app (12 seconds of reading aloud).
+Only a voice fingerprint (a 192-number embedding) is stored on the device,
+no audio. The server stores the label (`speaker`); the timeline shows it and
+the classification worker, if enabled, knows who said what. Utterances under
+a second are too short to tell and get the previous speaker if they follow
+within a few seconds, otherwise none (and "only my voice" drops them).
+
 ## iPhone app
 
 [`ios/`](ios/) is the same pipeline on the iPhone (iOS 17+): the capture,

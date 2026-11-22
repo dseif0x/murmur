@@ -11,12 +11,14 @@ on:
       - 'ios/**'
       - 'mac/Sources/Murmur/Audio.swift'
       - 'mac/Sources/Murmur/Uploader.swift'
+      - 'mac/Sources/Murmur/Speakers.swift'
       - '.github/workflows/ios.yml'
   pull_request:
     paths:
       - 'ios/**'
       - 'mac/Sources/Murmur/Audio.swift'
       - 'mac/Sources/Murmur/Uploader.swift'
+      - 'mac/Sources/Murmur/Speakers.swift'
       - '.github/workflows/ios.yml'
   workflow_dispatch:
 

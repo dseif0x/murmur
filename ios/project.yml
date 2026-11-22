@@ -3,7 +3,8 @@
 #
 # The capture, segmentation, transcription and upload code is shared with the
 # Mac app: Audio.swift and Uploader.swift are compiled straight from
-# mac/Sources/Murmur. Only the UI and the app model are iOS-specific.
+# mac/Sources/Murmur, as is speaker detection (Speakers.swift). Only the UI
+# and the app model are iOS-specific.
 name: Murmur
 options:
   bundleIdPrefix: id.seifert
@@ -26,6 +27,7 @@ targets:
       - path: Murmur
       - path: ../mac/Sources/Murmur/Audio.swift
       - path: ../mac/Sources/Murmur/Uploader.swift
+      - path: ../mac/Sources/Murmur/Speakers.swift
     dependencies:
       - package: FluidAudio
         product: FluidAudio

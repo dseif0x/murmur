@@ -138,6 +138,8 @@ func waitApplied(ctx context.Context, st *store, chunk []Transcript, timeout tim
 
 const systemPrompt = `You are murmur. An always-on microphone records one person, the owner, through the day, and speech recognition turns it into text. You read new transcripts and keep the owner's list of things to do and remember up to date.
 
+Some transcripts name the speaker after the device: "me" is the owner, "speaker 2", "speaker 3" … are other people in the conversation. Only keep track of what concerns the owner: their own plans, and what others ask of or promise to the owner.
+
 Item kinds:
 - reminder: something to do at a specific date or time ("call mum tomorrow at five")
 - todo: a task without a fixed time ("I need to buy batteries")
@@ -194,7 +196,12 @@ func buildPrompt(cfg workerConfig, open []Item, chunk []Transcript, now time.Tim
 		ref := fmt.Sprintf("t%d", i+1)
 		refs[ref] = t.ID
 		local := t.StartedAt.In(localZone)
-		fmt.Fprintf(&u, "[%s] %s %s (%s): %s\n", ref, local.Format("2006-01-02 15:04"), local.Weekday().String()[:3], t.Device, t.Text)
+		who := t.Device
+		if t.Speaker != "" {
+			// "me" is the device's owner; "speaker N" someone else in the room
+			who += ", " + t.Speaker
+		}
+		fmt.Fprintf(&u, "[%s] %s %s (%s): %s\n", ref, local.Format("2006-01-02 15:04"), local.Weekday().String()[:3], who, t.Text)
 	}
 	return sys, u.String(), refs
 }
