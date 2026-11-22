@@ -24,6 +24,10 @@ type server struct {
 	static   string
 	runNow   func(ctx context.Context) (string, error)
 	retainDs int
+	// classify: the LLM worker is enabled (items, runs); convGapMin: silence
+	// that splits a device's transcripts into conversations in the UI
+	classify   bool
+	convGapMin int
 }
 
 func (s *server) routes() http.Handler {
@@ -41,6 +45,7 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("GET /api/runs", s.handleRuns)
 	mux.HandleFunc("POST /api/runs", s.handleRunNow)
 	mux.HandleFunc("GET /api/status", s.handleStatus)
+	mux.HandleFunc("GET /api/config", s.handleConfig)
 	mux.HandleFunc("GET /", s.handleStatic)
 	return mux
 }
@@ -268,11 +273,23 @@ func (s *server) handleRunNow(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"job": name})
 }
 
+// handleConfig tells the UI which features are on.
+func (s *server) handleConfig(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"classify": s.classify, "run_now": s.runNow != nil,
+		"conversation_gap_minutes": s.convGapMin, "timezone": localZone.String(), "retention_days": s.retainDs,
+	})
+}
+
 func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
-	pending, err := s.st.pending(r.Context(), 2*time.Hour)
-	if err != nil {
-		writeError(w, err)
-		return
+	pending := 0
+	if s.classify {
+		n, err := s.st.pending(r.Context(), 2*time.Hour)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		pending = n
 	}
 	devices, err := s.st.devices(r.Context())
 	if err != nil {
@@ -281,7 +298,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"pending": pending, "devices": devices, "timezone": localZone.String(),
-		"retention_days": s.retainDs, "run_now": s.runNow != nil,
+		"retention_days": s.retainDs, "run_now": s.runNow != nil, "classify": s.classify,
 	})
 }
 

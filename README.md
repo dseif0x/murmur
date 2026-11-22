@@ -23,6 +23,14 @@ Turns what you say through the day into reminders, todos, events and notes.
   token), the web UI (items, a timeline of transcripts by day, search, runs)
   and its `/api`, and the consumer that stores worker results from NATS.
   Transcripts expire after `retentionDays`; items keep a quote of what was said.
+- **Conversations:** the timeline groups each device's transcripts into
+  conversations (a silence longer than `conversationGapMinutes`, default 10,
+  starts a new one), with duration, word count and copy-as-Markdown.
+- **Classification is optional and off by default** (`classify.enabled`).
+  Off, murmur only stores what was said and shows it as conversations: no
+  worker CronJob, no LLM key, no Items/Runs pages. On, the worker below
+  turns transcripts into items; it only takes transcripts received after it
+  was switched on, unless `classify.backfill` is true.
 - **Worker** (`murmur worker`, a CronJob, every 30 minutes by default): if
   nothing new came in, it exits without calling the model (the GPU node stays
   asleep). Otherwise it sends the new transcripts and the open items to an

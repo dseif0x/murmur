@@ -1,4 +1,4 @@
-{{- if .Values.worker.runNowButton }}
+{{- if and .Values.classify.enabled .Values.worker.runNowButton }}
 # The web UI's "Run" button: a Job from the worker CronJob.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role

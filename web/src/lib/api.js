@@ -17,6 +17,7 @@ const qs = (o) => {
 };
 
 export const api = {
+  config: () => req('GET', '/api/config'),
   status: () => req('GET', '/api/status'),
   items: (status = 'open', kind = '') => req('GET', '/api/items' + qs({ status, kind })),
   createItem: (it) => req('POST', '/api/items', it),

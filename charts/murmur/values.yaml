@@ -13,6 +13,20 @@ timezone: Europe/Vienna
 # 0 keeps everything.
 retentionDays: 30
 
+# The timeline groups a device's transcripts into conversations; a silence
+# longer than this starts a new one.
+conversationGapMinutes: 10
+
+# Classification: an LLM (the worker CronJob below) turns what was said into
+# reminders, todos, events and notes (the Items and Runs pages). Off: murmur
+# only stores transcripts and shows them as conversations; no CronJob, no
+# LLM key, no Items/Runs pages.
+classify:
+  enabled: false
+  # Switching it on sends only transcripts received from then on. true: also
+  # the ones already stored (up to retentionDays), in the first runs.
+  backfill: false
+
 # Bearer tokens devices upload with: a Secret whose key holds one or more
 # tokens, comma- or newline-separated.
 ingestTokens:
@@ -28,6 +42,7 @@ server:
   tolerations: []
   affinity: {}
 
+# The classification worker (used when classify.enabled).
 worker:
   # How often the worker looks for new transcripts. A run with nothing new
   # exits at once, without calling the model.
