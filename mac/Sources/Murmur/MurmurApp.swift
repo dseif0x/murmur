@@ -37,8 +37,12 @@ struct MenuView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
 
-            if case let .loadingModel(p) = model.phase, p > 0, p < 1 {
-                ProgressView(value: p)
+            if case let .loadingModel(p) = model.phase {
+                if model.preparingModel {
+                    ProgressView().controlSize(.small) // compiling: no meaningful fraction
+                } else if p > 0, p < 1 {
+                    ProgressView(value: min(p, 0.5) * 2)
+                }
             }
 
             if !model.isConfigured {

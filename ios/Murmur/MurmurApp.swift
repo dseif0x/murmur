@@ -31,8 +31,12 @@ struct ContentView: View {
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
-                    if case let .loadingModel(p) = model.phase, p > 0, p < 1 {
-                        ProgressView(value: p).padding(.horizontal, 40)
+                    if case let .loadingModel(p) = model.phase {
+                        if model.preparingModel {
+                            ProgressView() // compiling: no meaningful fraction
+                        } else if p > 0, p < 1 {
+                            ProgressView(value: min(p, 0.5) * 2).padding(.horizontal, 40)
+                        }
                     }
                 }
                 .frame(minHeight: 44)
