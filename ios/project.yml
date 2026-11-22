@@ -1,0 +1,67 @@
+# XcodeGen spec for the iPhone app: `cd ios && xcodegen generate`.
+# CI (.github/workflows/ios.yml) builds an unsigned IPA from it.
+#
+# The capture, segmentation, transcription and upload code is shared with the
+# Mac app: Audio.swift and Uploader.swift are compiled straight from
+# mac/Sources/Murmur. Only the UI and the app model are iOS-specific.
+name: Murmur
+options:
+  bundleIdPrefix: id.seifert
+  deploymentTarget:
+    iOS: "17.0"
+packages:
+  FluidAudio:
+    url: https://github.com/FluidInference/FluidAudio.git
+    exactVersion: 0.18.2
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  Murmur:
+    type: application
+    platform: iOS
+    sources:
+      - path: Murmur
+      - path: ../mac/Sources/Murmur/Audio.swift
+      - path: ../mac/Sources/Murmur/Uploader.swift
+    dependencies:
+      - package: FluidAudio
+        product: FluidAudio
+    info:
+      path: Murmur/Info.plist
+      properties:
+        CFBundleDisplayName: Murmur
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSRequiresIPhoneOS: true
+        ITSAppUsesNonExemptEncryption: false
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UIUserInterfaceStyle: Dark
+        UIApplicationSupportsIndirectInputEvents: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        # keeps listening (Always mode, a running recording) with the screen locked
+        UIBackgroundModes:
+          - audio
+        NSMicrophoneUsageDescription: Murmur transcribes what you say on this iPhone and sends the text (never audio) to your murmur server.
+        # murmur.homelab is on the LAN / VPN; plain http servers work too
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: id.seifert.murmur.ios
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ENABLE_PREVIEWS: NO
+        # Parakeet runs on the Neural Engine: arm64 devices only
+        ARCHS: arm64
+    scheme: {}
