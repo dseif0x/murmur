@@ -269,20 +269,34 @@ final class AppModel: ObservableObject {
     private func process(_ seg: SpeechSegment, mode: String) async {
         transcribing += 1
         defer { transcribing -= 1 }
-        guard let text = try? await transcriber.transcribe(seg.samples) else { return }
-        // noise comes back as nothing or a lone mark
-        guard text.unicodeScalars.filter({ CharacterSet.letters.contains($0) }).count >= 2 else { return }
-        var speaker: String?
+        // Speaker detection on: split the utterance where the voice changes and
+        // transcribe each speaker's part on its own.
+        var parts: [(SpeechSegment, SpeakerTagger.Result?)] = [(seg, nil)]
         if speakerMode != .off, await ensureSpeakers() {
-            let who = await tagger.tag(seg.samples, at: seg.startedAt)
-            // only my voice: everyone else is dropped here, never uploaded
-            if speakerMode == .onlyMe, voiceProfile != nil, !who.isMe { return }
-            speaker = who.speaker
+            parts = await tagger.turns(seg.samples, startedAt: seg.startedAt).map { t in
+                (SpeechSegment(samples: Array(seg.samples[t.range]), startedAt: t.startedAt, endedAt: t.endedAt), t.result)
+            }
         }
-        let segment = Segment(id: UUID().uuidString.lowercased(), text: text, startedAt: seg.startedAt,
-                              endedAt: seg.endedAt, mode: mode, language: nil, speaker: speaker)
-        await uploader.enqueue(segment)
-        recent.insert(segment, at: 0)
+        var segments: [Segment] = []
+        for (part, who) in parts {
+            // only my voice: everyone else is dropped here, before transcription and upload
+            if speakerMode == .onlyMe, voiceProfile != nil, !(who?.isMe ?? false) { continue }
+            let text: String
+            do {
+                text = try await transcriber.transcribe(part.samples)
+            } catch {
+            return
+            }
+            // noise comes back as nothing or a lone mark
+            guard text.unicodeScalars.filter({ CharacterSet.letters.contains($0) }).count >= 2 else { continue }
+            segments.append(Segment(id: UUID().uuidString.lowercased(), text: text, startedAt: part.startedAt,
+                                    endedAt: part.endedAt, mode: mode, language: nil, speaker: who?.speaker))
+        }
+        guard !segments.isEmpty else { return }
+        for segment in segments {
+            await uploader.enqueue(segment)
+            recent.insert(segment, at: 0)
+        }
         if recent.count > 40 { recent.removeLast(recent.count - 40) }
         saveRecent()
         // send soon, but let a conversation's utterances travel together
