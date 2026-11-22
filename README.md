@@ -17,7 +17,8 @@ Turns what you say through the day into reminders, todos, events and notes.
 
 - **Devices** listen (always, push-to-talk, or off), cut speech into utterances
   with voice activity detection and transcribe them **on the device** with
-  Parakeet v3. Only text is uploaded, never audio. See [`mac/`](mac/).
+  Parakeet v3. Only text is uploaded, never audio. See [`mac/`](mac/) and
+  [`ios/`](ios/) (iPhone).
 - **Server** (`murmur serve`): `POST /v1/transcripts` for devices (bearer
   token), the web UI (items, a timeline of transcripts by day, search, runs)
   and its `/api`, and the consumer that stores worker results from NATS.
@@ -30,6 +31,28 @@ Turns what you say through the day into reminders, todos, events and notes.
 - **NATS JetStream** carries `murmur.transcripts.created`, `murmur.results`,
   `murmur.items.created` and `murmur.items.updated`, so other things can hook
   in later. **Postgres** stores everything; no object store.
+
+## iPhone app
+
+[`ios/`](ios/) is the same pipeline on the iPhone (iOS 17+): the capture,
+VAD segmentation, Parakeet v3 and upload queue are compiled from the Mac app's
+`Audio.swift` and `Uploader.swift`; only the UI and the app model differ.
+
+- **Modes:** *Hold* (press and hold the button), *Tap* (tap to start, tap to
+  send), *Always* (continuous listening; keeps running with the screen locked,
+  orange mic indicator) and *Off*.
+- **Siri, Shortcuts, Action Button:** "Record with Murmur" / "Murmur aufnehmen"
+  starts a recording and opens the app; run it again (or "Stop Murmur") to
+  send. For the Action Button: Settings → Action Button → Shortcut → Murmur.
+- First start downloads the speech model (~600 MB). Transcripts wait on the
+  phone until the server takes them; murmur.homelab is reachable at home or
+  over the VPN.
+- **Install:** CI (`.github/workflows/ios.yml`) builds an **unsigned** IPA:
+  the `ios-latest` prerelease (from `main`) or `ios-v*` tags. Sign and install
+  it with Sideloadly or AltStore/SideStore (a free Apple ID needs re-signing
+  every 7 days).
+- **Build locally:** `brew install xcodegen && cd ios && xcodegen generate`,
+  then open `Murmur.xcodeproj` and pick your signing team.
 
 ## Deploy
 

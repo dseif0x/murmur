@@ -1,0 +1,95 @@
+name: iOS app
+
+# Builds the iPhone app (ios/) as an UNSIGNED .ipa. Install it with your own
+# signing: Sideloadly or AltStore/SideStore (free Apple ID: re-sign every 7
+# days), or `codesign` with a profile.
+on:
+  push:
+    branches: [main]
+    tags: ['ios-v*']
+    paths:
+      - 'ios/**'
+      - 'mac/Sources/Murmur/Audio.swift'
+      - 'mac/Sources/Murmur/Uploader.swift'
+      - '.github/workflows/ios.yml'
+  pull_request:
+    paths:
+      - 'ios/**'
+      - 'mac/Sources/Murmur/Audio.swift'
+      - 'mac/Sources/Murmur/Uploader.swift'
+      - '.github/workflows/ios.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: unsigned ipa
+    runs-on: macos-15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Xcode 26 (Swift 6.2, iOS 26 SDK)
+        run: |
+          XC=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$XC" ]; then ls /Applications | grep -i xcode; exit 1; fi
+          sudo xcode-select -s "$XC"
+          xcodebuild -version
+
+      - name: Tools
+        run: brew install xcodegen
+
+      - name: Generate the Xcode project
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: Build (no code signing)
+        working-directory: ios
+        env:
+          VERSION: ${{ startsWith(github.ref, 'refs/tags/ios-v') && github.ref_name || '0.1.0' }}
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project Murmur.xcodeproj -scheme Murmur -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            -skipPackagePluginValidation -skipMacroValidation \
+            MARKETING_VERSION="${VERSION#ios-v}" \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build 2>&1 | tee build.log | grep -E "error:|warning: .*(ios/Murmur|mac/Sources)|BUILD (SUCCEEDED|FAILED)" || true
+          test -d build/Build/Products/Release-iphoneos/Murmur.app
+
+      - name: Upload the build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: ios/build.log
+
+      - name: Package the IPA
+        run: |
+          mkdir -p Payload
+          cp -R ios/build/Build/Products/Release-iphoneos/Murmur.app Payload/
+          zip -qry Murmur-unsigned.ipa Payload
+          ls -la Murmur-unsigned.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Murmur-unsigned-ipa
+          path: Murmur-unsigned.ipa
+          if-no-files-found: error
+
+      - name: Publish (rolling "ios-latest" from main, or the tag)
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NOTES="Unsigned IPA: sign it to install (Sideloadly, AltStore/SideStore). First start downloads the speech model (~600 MB)."
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            gh release create "$GITHUB_REF_NAME" Murmur-unsigned.ipa --title "Murmur for iPhone ${GITHUB_REF_NAME#ios-v}" --notes "$NOTES"
+          else
+            gh release delete ios-latest --yes --cleanup-tag 2>/dev/null || true
+            gh release create ios-latest Murmur-unsigned.ipa --prerelease --target "$GITHUB_SHA" \
+              --title "Murmur for iPhone (latest build)" --notes "Built from ${GITHUB_SHA::7}. $NOTES"
+          fi
