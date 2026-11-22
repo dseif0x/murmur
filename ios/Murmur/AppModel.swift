@@ -1,3 +1,4 @@
+import ActivityKit
 import AVFoundation
 import FluidAudio
 import Foundation
@@ -55,7 +56,7 @@ final class AppModel: ObservableObject {
     }
 
     // state
-    @Published private(set) var phase: Phase = .starting
+    @Published private(set) var phase: Phase = .starting { didSet { updateActivity() } }
     @Published private(set) var recent: [Segment] = []
     @Published private(set) var upload = Uploader.Status()
     @Published private(set) var transcribing = 0
@@ -80,6 +81,8 @@ final class AppModel: ObservableObject {
     private var pendingStart = false // Siri asked to record before the model was ready
     private var backlog: [(SpeechSegment, String)] = []
     private var observers: [NSObjectProtocol] = []
+    private var activity: Activity<MurmurActivityAttributes>?
+    private var activityTranscripts = 0
 
     private init() {
         mode = Mode(rawValue: defaults.string(forKey: "mode") ?? "") ?? .ptt
@@ -124,7 +127,14 @@ final class AppModel: ObservableObject {
             Task { @MainActor in self?.upload = s }
         }
         flushTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.flush() }
+            Task { @MainActor in
+                self?.flush()
+                self?.refreshActivity()
+            }
+        }
+        // a Live Activity left over from a run iOS ended
+        for a in Activity<MurmurActivityAttributes>.activities {
+            await a.end(nil, dismissalPolicy: .immediate)
         }
         micDenied = AVAudioApplication.shared.recordPermission == .denied
         phase = .loadingModel(0)
@@ -350,6 +360,51 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // MARK: - Live Activity
+
+    /// The Live Activity's Stop button.
+    func stopFromLiveActivity() {
+        if phase == .recording {
+            stopRecording()
+        } else if mode == .always {
+            mode = .off
+        }
+    }
+
+    /// A Live Activity runs while the microphone is on (Always mode, a
+    /// recording). It doesn't keep the app alive (the audio session does),
+    /// but shows that murmur listens, offers Stop, and turns into "stopped"
+    /// when iOS ends the app: it goes stale unless refreshed every 15 s.
+    private func updateActivity() {
+        let live = phase == .recording || phase == .listening || phase == .hearing
+        guard live else {
+            if let a = activity {
+                activity = nil
+                Task { await a.end(nil, dismissalPolicy: .immediate) }
+            }
+            return
+        }
+        if activity == nil {
+            guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+            activityTranscripts = 0
+            activity = try? Activity.request(attributes: MurmurActivityAttributes(startedAt: Date()),
+                                             content: activityContent())
+        } else if activity?.content.state != activityContent().state {
+            refreshActivity()
+        }
+    }
+
+    private func refreshActivity() {
+        guard let a = activity else { return }
+        let content = activityContent()
+        Task { await a.update(content) }
+    }
+
+    private func activityContent() -> ActivityContent<MurmurActivityAttributes.ContentState> {
+        ActivityContent(state: .init(recording: phase == .recording, transcripts: activityTranscripts),
+                        staleDate: Date().addingTimeInterval(60))
+    }
+
     // MARK: - transcripts
 
     private func process(_ seg: SpeechSegment, mode: String) async {
@@ -390,6 +445,8 @@ final class AppModel: ObservableObject {
         }
         if recent.count > 100 { recent.removeLast(recent.count - 100) }
         saveRecent()
+        activityTranscripts += segments.count
+        refreshActivity()
         // send soon, but let a conversation's utterances travel together
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in self?.flush() }
     }

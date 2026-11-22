@@ -1,3 +1,4 @@
+import CoreML
 import FluidAudio
 import Foundation
 
@@ -108,7 +109,7 @@ actor SpeakerTagger {
         if let loading {
             task = loading
         } else {
-            task = Task { try await CampPlusEmbedder.load(progressHandler: { p in progress(p.fractionCompleted) }) }
+            task = Task { try await Self.loadEmbedder(progress: progress) }
             loading = task
         }
         do {
@@ -119,6 +120,26 @@ actor SpeakerTagger {
             loading = nil // let the next utterance retry
             throw error
         }
+    }
+
+    /// CAM++ on the CPU only. FluidAudio runs its main model on CPU+GPU, but
+    /// iOS doesn't let background apps use the GPU: with the screen locked
+    /// every embedding failed and transcripts went out without a speaker.
+    /// The model is tiny (~7 M parameters), the CPU is plenty.
+    private static func loadEmbedder(progress: @escaping @Sendable (Double) -> Void) async throws -> CampPlusEmbedder {
+        let dir = try await CampPlusModels.download(progressHandler: { p in progress(p.fractionCompleted) })
+        let cpu = MLModelConfiguration()
+        cpu.computeUnits = .cpuOnly
+        func load(_ name: String) throws -> MLModel {
+            let compiled = dir.appendingPathComponent("\(name).mlmodelc")
+            let url = FileManager.default.fileExists(atPath: compiled.path)
+                ? compiled
+                : try MLModel.compileModel(at: dir.appendingPathComponent("\(name).mlpackage"))
+            return try MLModel(contentsOf: url, configuration: cpu)
+        }
+        let models = CampPlusModels(preprocessor: try load(ModelNames.CampPlus.preprocessor),
+                                    model: try load(ModelNames.CampPlus.model))
+        return CampPlusEmbedder(models: models)
     }
 
     func setProfile(_ embedding: [Float]?) {
@@ -152,8 +173,15 @@ actor SpeakerTagger {
         }
         lastHeard = at
         let seconds = Double(samples.count) / Double(Segmenter.rate)
-        guard let embedder, seconds >= Self.minSeconds,
-              let e = try? await embedder.embed(audio: samples) else {
+        var embedding: [Float]?
+        if let embedder, seconds >= Self.minSeconds {
+            do {
+                embedding = try await embedder.embed(audio: samples)
+            } catch {
+                NSLog("murmur speakers: embedding failed (%.1f s): %@", seconds, error.localizedDescription)
+            }
+        }
+        guard let e = embedding else {
             // too short to tell: a quick reply right after someone counts as them
             if let last, at.timeIntervalSince(last.at) < 4 {
                 return Result(speaker: last.speaker, isMe: last.isMe)

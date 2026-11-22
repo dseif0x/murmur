@@ -25,12 +25,15 @@ targets:
     platform: iOS
     sources:
       - path: Murmur
+      - path: Shared
       - path: ../mac/Sources/Murmur/Audio.swift
       - path: ../mac/Sources/Murmur/Uploader.swift
       - path: ../mac/Sources/Murmur/Speakers.swift
     dependencies:
       - package: FluidAudio
         product: FluidAudio
+      - target: MurmurWidgets
+        embed: true
     info:
       path: Murmur/Info.plist
       properties:
@@ -53,6 +56,8 @@ targets:
         # keeps listening (Always mode, a running recording) with the screen locked
         UIBackgroundModes:
           - audio
+        # lock screen / Dynamic Island status while listening or recording
+        NSSupportsLiveActivities: true
         NSMicrophoneUsageDescription: Murmur transcribes what you say on this iPhone and sends the text (never audio) to your murmur server.
         # murmur.homelab is on the LAN / VPN; plain http servers work too
         NSAppTransportSecurity:
@@ -67,3 +72,31 @@ targets:
         # Parakeet runs on the Neural Engine: arm64 devices only
         ARCHS: arm64
     scheme: {}
+  # The Live Activity (lock screen, Dynamic Island) shown while murmur
+  # listens or records.
+  MurmurWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: MurmurWidgets
+      - path: Shared
+    dependencies:
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+    info:
+      path: MurmurWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: Murmur
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: id.seifert.murmur.ios.widgets
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ENABLE_PREVIEWS: NO
+        ARCHS: arm64
+        SKIP_INSTALL: YES
+        # StopListeningIntent calls into the app only when built into the app
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) WIDGET_EXTENSION
