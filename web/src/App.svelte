@@ -5,6 +5,7 @@
   import RunsPage from './components/RunsPage.svelte';
   import { api } from './lib/api.js';
   import { route, go } from './lib/router.svelte.js';
+  import { config, loadConfig } from './lib/config.svelte.js';
 
   let status = $state(null);
   let refreshKey = $state(0);
@@ -27,6 +28,7 @@
   }
 
   $effect(() => {
+    loadConfig();
     loadStatus();
     // keep counts and lists fresh while the page is open
     const t = setInterval(() => {
@@ -50,25 +52,34 @@
     }
   }
 
-  const TABS = [
-    { id: 'items', label: 'Items', icon: 'todo' },
+  const ALL_TABS = [
+    { id: 'items', label: 'Items', icon: 'todo', classify: true },
     { id: 'timeline', label: 'Timeline', icon: 'wave' },
-    { id: 'runs', label: 'Runs', icon: 'runs' },
+    { id: 'runs', label: 'Runs', icon: 'runs', classify: true },
   ];
+  // without classification there are no items or runs: only the timeline
+  const TABS = $derived(ALL_TABS.filter((t) => !t.classify || config.classify));
+  const home = $derived(config.classify ? 'items' : 'timeline');
+  // the default page (or an items/runs link with classification off)
+  const page = $derived(
+    config.loaded && (!route.page || (!config.classify && (route.page === 'items' || route.page === 'runs')))
+      ? home
+      : route.page || home,
+  );
 </script>
 
 <header>
   <div class="inner">
-    <a class="brand" href="#/items"><img src="/icon.svg" alt="" width="26" height="26" /> murmur</a>
+    <a class="brand" href="#/{home}"><img src="/icon.svg" alt="" width="26" height="26" /> murmur</a>
     <nav>
       {#each TABS as t (t.id)}
-        <button class:on={route.page === t.id} onclick={() => go(t.id)}>
+        <button class:on={page === t.id} onclick={() => go(t.id)}>
           <Icon name={t.icon} size={16} /><span>{t.label}</span>
         </button>
       {/each}
     </nav>
     <div class="status">
-      {#if status}
+      {#if status && config.classify}
         <span class="pending" title="Transcripts waiting for the next run">{status.pending} pending</span>
         {#if status.run_now}
           <button class="btn small" disabled={starting || !status.pending} onclick={runNow} title="Process pending transcripts now">
@@ -81,9 +92,11 @@
 </header>
 
 <main>
-  {#if route.page === 'timeline'}
+  {#if !config.loaded}
+    <p class="muted">Loading…</p>
+  {:else if page === 'timeline'}
     <TimelinePage {refreshKey} />
-  {:else if route.page === 'runs'}
+  {:else if page === 'runs'}
     <RunsPage {refreshKey} />
   {:else}
     <ItemsPage {refreshKey} />

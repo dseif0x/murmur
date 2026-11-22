@@ -43,7 +43,13 @@ spec:
                   name: {{ .Values.ingestTokens.existingSecret }}
                   key: {{ .Values.ingestTokens.key }}
             {{- end }}
-            {{- if .Values.worker.runNowButton }}
+            - name: CLASSIFY_ENABLED
+              value: {{ .Values.classify.enabled | quote }}
+            - name: CLASSIFY_BACKFILL
+              value: {{ .Values.classify.backfill | quote }}
+            - name: CONVERSATION_GAP_MINUTES
+              value: {{ .Values.conversationGapMinutes | quote }}
+            {{- if and .Values.classify.enabled .Values.worker.runNowButton }}
             - name: WORKER_CRONJOB
               value: {{ include "murmur.fullname" . }}-worker
             {{- end }}

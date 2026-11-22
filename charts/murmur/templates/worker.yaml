@@ -1,3 +1,4 @@
+{{- if .Values.classify.enabled }}
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -33,6 +34,8 @@ spec:
               securityContext: {{- toYaml .Values.securityContext | nindent 16 }}
               env:
                 {{- include "murmur.commonEnv" . | nindent 16 }}
+                - name: CLASSIFY_BACKFILL
+                  value: {{ .Values.classify.backfill | quote }}
                 - name: LLM_BASE_URL
                   value: {{ .Values.worker.llmBaseURL | quote }}
                 - name: LLM_MODEL
@@ -63,3 +66,4 @@ spec:
           {{- with .Values.worker.tolerations }}
           tolerations: {{- toYaml . | nindent 12 }}
           {{- end }}
+{{- end }}

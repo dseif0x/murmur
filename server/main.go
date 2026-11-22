@@ -84,6 +84,9 @@ func main() {
 		return
 	case "worker":
 		log.SetPrefix("worker: ")
+		if err := st.initClassifySince(ctx, env("CLASSIFY_BACKFILL", "false") == "true"); err != nil {
+			log.Fatal(err)
+		}
 		b, err := connectBus(ctx, env("NATS_URL", "nats://localhost:4222"))
 		if err != nil {
 			log.Fatal(err)
@@ -129,8 +132,18 @@ func serve(ctx context.Context, st *store) {
 	if len(tokens) == 0 {
 		log.Print("warning: INGEST_TOKENS is empty, devices can't upload")
 	}
-	s := &server{st: st, bus: b, tokens: tokens, static: env("STATIC_DIR", "./static"), retainDs: envInt("RETENTION_DAYS", 30)}
-	if cj := env("WORKER_CRONJOB", ""); cj != "" {
+	s := &server{st: st, bus: b, tokens: tokens, static: env("STATIC_DIR", "./static"), retainDs: envInt("RETENTION_DAYS", 30),
+		classify: env("CLASSIFY_ENABLED", "false") == "true", convGapMin: envInt("CONVERSATION_GAP_MINUTES", 10)}
+	// Classification (the LLM worker turning transcripts into items) is
+	// optional; without it murmur only stores and shows what was said.
+	if s.classify {
+		if err := st.initClassifySince(ctx, env("CLASSIFY_BACKFILL", "false") == "true"); err != nil {
+			log.Fatal(err)
+		}
+	} else if err := st.clearClassifySince(ctx); err != nil {
+		log.Fatal(err)
+	}
+	if cj := env("WORKER_CRONJOB", ""); s.classify && cj != "" {
 		s.runNow = func(ctx context.Context) (string, error) { return createJobFromCronJob(ctx, cj) }
 	}
 

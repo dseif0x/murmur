@@ -3,6 +3,7 @@
   import Icon from './Icon.svelte';
   import { api, fmtTime, fmtDay, dayKey } from '../lib/api.js';
   import { route, go } from '../lib/router.svelte.js';
+  import { config } from '../lib/config.svelte.js';
 
   let { refreshKey = 0 } = $props();
 
@@ -75,21 +76,46 @@
     }, 300);
   }
 
-  // gaps of more than 15 minutes split the day into conversations
+  // Conversations: a device's transcripts, split where it heard nothing for
+  // longer than the server's gap (conversation_gap_minutes). Devices don't mix:
+  // the Mac and the phone in the same room are two conversations.
   const blocks = $derived.by(() => {
+    if (searching) return transcripts.map((t) => ({ start: t.started_at, end: t.ended_at, device: t.device, items: [t] }));
+    const gap = (config.conversation_gap_minutes || 10) * 60000;
+    const open = new Map(); // device -> its current conversation
     const out = [];
-    let cur = null;
     for (const t of transcripts) {
-      const start = new Date(t.started_at);
-      if (searching || !cur || start - new Date(cur.end) > 15 * 60000) {
-        cur = { start: t.started_at, end: t.ended_at, items: [] };
+      let cur = open.get(t.device);
+      if (!cur || new Date(t.started_at) - new Date(cur.end) > gap) {
+        cur = { start: t.started_at, end: t.ended_at, device: t.device, items: [] };
+        open.set(t.device, cur);
         out.push(cur);
       }
       cur.items.push(t);
-      cur.end = t.ended_at;
+      if (new Date(t.ended_at) > new Date(cur.end)) cur.end = t.ended_at;
     }
     return out;
   });
+
+  const words = (b) => b.items.reduce((n, t) => n + (t.text.trim().split(/\s+/).filter(Boolean).length || 0), 0);
+
+  function duration(b) {
+    const min = Math.round((new Date(b.end) - new Date(b.start)) / 60000);
+    return min < 1 ? '<1 min' : min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${min % 60} min`;
+  }
+
+  let copied = $state('');
+  async function copy(b) {
+    const head = `## ${fmtDay(b.start)} ${fmtTime(b.start)}–${fmtTime(b.end)} · ${b.device}`;
+    const body = b.items.map((t) => `**${fmtTime(t.started_at)}** ${t.text}`).join('\n\n');
+    try {
+      await navigator.clipboard.writeText(`${head}\n\n${body}\n`);
+      copied = b.start + b.device;
+      setTimeout(() => (copied = ''), 2000);
+    } catch {
+      /* clipboard needs https or localhost */
+    }
+  }
 
   const dayInfo = $derived(days.find((d) => d.day === day));
 </script>
@@ -127,9 +153,17 @@
     {:else if !transcripts.length && (day || searching)}
       <p class="muted">Nothing {searching ? 'found' : 'on this day'}.</p>
     {/if}
-    {#each blocks as b, i (b.start + i)}
+    {#each blocks as b, i (b.start + b.device + i)}
       {#if !searching}
-        <div class="block-head">{fmtTime(b.start)} – {fmtTime(b.end)}</div>
+        <div class="block-head">
+          <span>{fmtTime(b.start)} – {fmtTime(b.end)}</span>
+          <span>· {b.device}</span>
+          <span>· {duration(b)} · {words(b)} words</span>
+          <button class="copy" onclick={() => copy(b)} title="Copy this conversation as Markdown">
+            <Icon name={copied === b.start + b.device ? 'check' : 'copy'} size={12} />
+            {copied === b.start + b.device ? 'Copied' : 'Copy'}
+          </button>
+        </div>
       {/if}
       <div class="block">
         {#each b.items as t (t.id)}
@@ -143,10 +177,12 @@
               <div class="tags">
                 <span title="Device"><Icon name={t.mode === 'ptt' ? 'mic' : 'laptop'} size={12} /> {t.device}</span>
                 {#if t.language}<span>{t.language}</span>{/if}
-                {#if !t.processed}<span class="pending">not processed yet</span>{/if}
-                {#each t.item_ids as id (id)}
-                  <a class="item-link" href="#/items">item #{id}</a>
-                {/each}
+                {#if config.classify}
+                  {#if !t.processed}<span class="pending">not processed yet</span>{/if}
+                  {#each t.item_ids as id (id)}
+                    <a class="item-link" href="#/items">item #{id}</a>
+                  {/each}
+                {/if}
               </div>
             </div>
           </div>
@@ -223,10 +259,28 @@
     margin-left: 8px;
   }
   .block-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
     font-size: 12px;
     color: var(--muted);
     margin: 18px 0 6px;
     letter-spacing: 0.03em;
+  }
+  .copy {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+  .copy:hover {
+    color: var(--text);
+    background: var(--hover);
   }
   .block {
     border-left: 2px solid var(--line);

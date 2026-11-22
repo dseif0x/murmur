@@ -10,4 +10,8 @@ kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "murmur.fullname
 
 No ingestTokens.existingSecret set: devices can't upload yet.
 {{- end }}
-The worker runs on "{{ .Values.worker.schedule }}" ({{ .Values.timezone }}) with model {{ .Values.worker.model }}.
+{{- if .Values.classify.enabled }}
+Classification is on: the worker runs on "{{ .Values.worker.schedule }}" ({{ .Values.timezone }}) with model {{ .Values.worker.model }}.
+{{- else }}
+Classification is off: murmur stores transcripts and shows them as conversations (classify.enabled turns the LLM worker on).
+{{- end }}

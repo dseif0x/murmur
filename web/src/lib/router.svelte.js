@@ -1,9 +1,9 @@
-// Hash routes: #/items, #/timeline/2026-11-04?t=<transcript id>, #/runs
+// Hash routes (no page: the app's home, items or timeline): #/items, #/timeline/2026-11-04?t=<transcript id>, #/runs
 function parse() {
   const h = location.hash.replace(/^#\/?/, '');
   const [path, query = ''] = h.split('?');
   const parts = path.split('/').filter(Boolean);
-  return { page: parts[0] || 'items', arg: parts[1] || '', query: new URLSearchParams(query) };
+  return { page: parts[0] || '', arg: parts[1] || '', query: new URLSearchParams(query) };
 }
 
 export const route = $state(parse());

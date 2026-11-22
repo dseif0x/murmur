@@ -19,6 +19,7 @@
   import Activity from '@lucide/svelte/icons/activity';
   import Check from '@lucide/svelte/icons/check';
   import ChevronLeft from '@lucide/svelte/icons/chevron-left';
+  import Copy from '@lucide/svelte/icons/copy';
 
   const ICONS = {
     reminder: Bell,
@@ -40,6 +41,7 @@
     wave: AudioLines,
     runs: Activity,
     check: Check,
+    copy: Copy,
     back: ChevronLeft,
   };
 </script>

@@ -58,7 +58,33 @@ var (
 	itemStates = map[string]bool{"open": true, "done": true, "dismissed": true}
 )
 
-type store struct{ db *pgxpool.Pool }
+type store struct {
+	db *pgxpool.Pool
+	// since: only transcripts received at or after this go to the
+	// classification worker (zero: all of them, i.e. backfill)
+	since time.Time
+}
+
+// ---- settings ---------------------------------------------------------------
+
+// initClassifySince sets s.since for classification. Without backfill the
+// cutoff is the moment classification was first switched on (stored, so
+// every run and the server agree); with backfill there's none.
+func (s *store) initClassifySince(ctx context.Context, backfill bool) error {
+	if backfill {
+		s.since = time.Time{}
+		return nil
+	}
+	return s.db.QueryRow(ctx, `INSERT INTO settings (key, at) VALUES ('classify_since', now())
+		ON CONFLICT (key) DO UPDATE SET key = EXCLUDED.key RETURNING at`).Scan(&s.since)
+}
+
+// clearClassifySince forgets the cutoff (classification is off): switching
+// it on again later starts from that moment, not from the first time.
+func (s *store) clearClassifySince(ctx context.Context) error {
+	_, err := s.db.Exec(ctx, `DELETE FROM settings WHERE key = 'classify_since'`)
+	return err
+}
 
 // ---- transcripts ------------------------------------------------------------
 
@@ -194,7 +220,8 @@ func (s *store) devices(ctx context.Context) ([]string, error) {
 func (s *store) pending(ctx context.Context, claimTTL time.Duration) (int, error) {
 	var n int
 	err := s.db.QueryRow(ctx, `SELECT count(*) FROM transcripts WHERE processed_at IS NULL
-		AND (claimed_at IS NULL OR claimed_at < now() - $1::interval)`, claimTTL.String()).Scan(&n)
+		AND (claimed_at IS NULL OR claimed_at < now() - $1::interval) AND received_at >= $2`,
+		claimTTL.String(), s.since).Scan(&n)
 	return n, err
 }
 
@@ -204,10 +231,10 @@ func (s *store) claim(ctx context.Context, run string, limit int, claimTTL time.
 		UPDATE transcripts SET claimed_by = $1, claimed_at = now()
 		WHERE id IN (
 			SELECT id FROM transcripts WHERE processed_at IS NULL
-				AND (claimed_at IS NULL OR claimed_at < now() - $3::interval)
+				AND (claimed_at IS NULL OR claimed_at < now() - $3::interval) AND received_at >= $4
 			ORDER BY started_at LIMIT $2 FOR UPDATE SKIP LOCKED)
 		RETURNING id, device, mode, started_at, ended_at, text, coalesce(language, '')`,
-		run, limit, claimTTL.String())
+		run, limit, claimTTL.String(), s.since)
 	if err != nil {
 		return nil, err
 	}
