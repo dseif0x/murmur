@@ -20,6 +20,7 @@ type Transcript struct {
 	EndedAt   time.Time `json:"ended_at"`
 	Text      string    `json:"text"`
 	Language  string    `json:"language,omitempty"`
+	Speaker   string    `json:"speaker,omitempty"`
 	Processed bool      `json:"processed"`
 	ItemIDs   []int64   `json:"item_ids,omitempty"`
 }
@@ -100,10 +101,10 @@ func (s *store) insertTranscripts(ctx context.Context, ts []Transcript) ([]strin
 	for _, t := range ts {
 		var id string
 		err := tx.QueryRow(ctx, `
-			INSERT INTO transcripts (id, device, mode, started_at, ended_at, text, language)
-			VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7, ''))
+			INSERT INTO transcripts (id, device, mode, started_at, ended_at, text, language, speaker)
+			VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7, ''), NULLIF($8, ''))
 			ON CONFLICT (id) DO NOTHING RETURNING id`,
-			t.ID, t.Device, t.Mode, t.StartedAt, t.EndedAt, t.Text, t.Language).Scan(&id)
+			t.ID, t.Device, t.Mode, t.StartedAt, t.EndedAt, t.Text, t.Language, t.Speaker).Scan(&id)
 		if errors.Is(err, pgx.ErrNoRows) {
 			continue
 		}
@@ -153,7 +154,7 @@ func (s *store) listTranscripts(ctx context.Context, q transcriptQuery) ([]Trans
 		order = "t.started_at DESC" // search: newest first
 	}
 	sql := `SELECT t.id, t.device, t.mode, t.started_at, t.ended_at, t.text, coalesce(t.language, ''),
-		t.processed_at IS NOT NULL,
+		coalesce(t.speaker, ''), t.processed_at IS NOT NULL,
 		coalesce((SELECT array_agg(item_id ORDER BY item_id) FROM item_sources s WHERE s.transcript_id = t.id), '{}')
 		FROM transcripts t`
 	if len(where) > 0 {
@@ -168,7 +169,7 @@ func (s *store) listTranscripts(ctx context.Context, q transcriptQuery) ([]Trans
 	out := []Transcript{}
 	for rows.Next() {
 		var t Transcript
-		if err := rows.Scan(&t.ID, &t.Device, &t.Mode, &t.StartedAt, &t.EndedAt, &t.Text, &t.Language, &t.Processed, &t.ItemIDs); err != nil {
+		if err := rows.Scan(&t.ID, &t.Device, &t.Mode, &t.StartedAt, &t.EndedAt, &t.Text, &t.Language, &t.Speaker, &t.Processed, &t.ItemIDs); err != nil {
 			return nil, err
 		}
 		out = append(out, t)
@@ -233,7 +234,7 @@ func (s *store) claim(ctx context.Context, run string, limit int, claimTTL time.
 			SELECT id FROM transcripts WHERE processed_at IS NULL
 				AND (claimed_at IS NULL OR claimed_at < now() - $3::interval) AND received_at >= $4
 			ORDER BY started_at LIMIT $2 FOR UPDATE SKIP LOCKED)
-		RETURNING id, device, mode, started_at, ended_at, text, coalesce(language, '')`,
+		RETURNING id, device, mode, started_at, ended_at, text, coalesce(language, ''), coalesce(speaker, '')`,
 		run, limit, claimTTL.String(), s.since)
 	if err != nil {
 		return nil, err
@@ -242,7 +243,7 @@ func (s *store) claim(ctx context.Context, run string, limit int, claimTTL time.
 	var out []Transcript
 	for rows.Next() {
 		var t Transcript
-		if err := rows.Scan(&t.ID, &t.Device, &t.Mode, &t.StartedAt, &t.EndedAt, &t.Text, &t.Language); err != nil {
+		if err := rows.Scan(&t.ID, &t.Device, &t.Mode, &t.StartedAt, &t.EndedAt, &t.Text, &t.Language, &t.Speaker); err != nil {
 			return nil, err
 		}
 		out = append(out, t)

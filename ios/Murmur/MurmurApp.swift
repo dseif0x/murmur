@@ -170,6 +170,7 @@ struct RecentList: View {
                             HStack(spacing: 4) {
                                 Text(seg.startedAt, format: .dateTime.day().month().hour().minute())
                                 if seg.mode == "ptt" { Image(systemName: "mic.fill") }
+                                if let s = seg.speaker { Text("· " + s) }
                             }
                             .font(.caption2)
                             .foregroundStyle(.secondary)
@@ -237,6 +238,44 @@ struct SettingsView: View {
                     }
                 } header: {
                     Text("Always mode: speech detection")
+                }
+
+                Section {
+                    Picker("Speakers", selection: $model.speakerMode) {
+                        ForEach(SpeakerMode.allCases) { Text($0.label).tag($0) }
+                    }
+                    Text(model.speakerMode.explanation)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    if let p = model.voiceProfile {
+                        LabeledContent("Your voice") {
+                            Text(p.createdAt, format: .dateTime.day().month().year())
+                        }
+                    }
+                    switch model.enrollment {
+                    case let .recording(left):
+                        Label("Speak normally… \(left) s", systemImage: "waveform")
+                            .foregroundStyle(.orange)
+                    case .processing:
+                        HStack { Text("Processing…"); Spacer(); ProgressView() }
+                    default:
+                        Button(model.voiceProfile == nil ? "Record my voice (12 s)" : "Record my voice again") { model.enrollVoice() }
+                        if model.voiceProfile != nil {
+                            Button("Delete my voice", role: .destructive) { model.deleteVoiceProfile() }
+                        }
+                    }
+                    if case let .failed(msg) = model.enrollment {
+                        Text(msg).font(.footnote).foregroundStyle(.red)
+                    }
+                    if model.speakerMode.needsProfile && model.voiceProfile == nil {
+                        Text("Record your voice first: until then nothing is dropped.")
+                            .font(.footnote)
+                            .foregroundStyle(.orange)
+                    }
+                } header: {
+                    Text("Speakers")
+                } footer: {
+                    Text("Read something aloud for 12 seconds. Only a voice fingerprint is kept, no audio; detection runs on this iPhone.")
                 }
 
                 Section {

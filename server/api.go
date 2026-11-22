@@ -83,6 +83,7 @@ type ingestRequest struct {
 		EndedAt   time.Time `json:"ended_at"`
 		Language  string    `json:"language"`
 		Mode      string    `json:"mode"`
+		Speaker   string    `json:"speaker"`
 	} `json:"segments"`
 }
 
@@ -112,7 +113,8 @@ func (s *server) handleIngest(w http.ResponseWriter, r *http.Request) {
 			mode = "always"
 		}
 		ts = append(ts, Transcript{ID: strings.ToLower(seg.ID), Device: device, Mode: mode, StartedAt: seg.StartedAt,
-			EndedAt: seg.EndedAt, Text: clip(text, 20000), Language: clip(seg.Language, 16)})
+			EndedAt: seg.EndedAt, Text: clip(text, 20000), Language: clip(seg.Language, 16),
+			Speaker: clip(strings.TrimSpace(seg.Speaker), 32)})
 	}
 	added, err := s.st.insertTranscripts(r.Context(), ts)
 	if err != nil {

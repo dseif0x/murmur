@@ -104,10 +104,20 @@
     return min < 1 ? '<1 min' : min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${min % 60} min`;
   }
 
+  // a stable colour per speaker label ("me" gets the accent)
+  const PALETTE = ['#f6c177', '#9ccfd8', '#c4a7e7', '#eb6f92', '#a3be8c', '#ebbcba'];
+  function speakerColor(s) {
+    if (s === 'me') return 'var(--accent)';
+    const n = parseInt(s.replace(/\D/g, ''), 10) || 0;
+    return PALETTE[n % PALETTE.length];
+  }
+
   let copied = $state('');
   async function copy(b) {
     const head = `## ${fmtDay(b.start)} ${fmtTime(b.start)}–${fmtTime(b.end)} · ${b.device}`;
-    const body = b.items.map((t) => `**${fmtTime(t.started_at)}** ${t.text}`).join('\n\n');
+    const body = b.items
+      .map((t) => `**${fmtTime(t.started_at)}${t.speaker ? ' · ' + t.speaker : ''}** ${t.text}`)
+      .join('\n\n');
     try {
       await navigator.clipboard.writeText(`${head}\n\n${body}\n`);
       copied = b.start + b.device;
@@ -173,6 +183,7 @@
               <span>{fmtTime(t.started_at)}</span>
             </div>
             <div class="text">
+              {#if t.speaker}<span class="speaker" style="color: {speakerColor(t.speaker)}">{t.speaker}</span>{/if}
               <p>{t.text}</p>
               <div class="tags">
                 <span title="Device"><Icon name={t.mode === 'ptt' ? 'mic' : 'laptop'} size={12} /> {t.device}</span>
@@ -307,6 +318,13 @@
     padding-top: 2px;
     display: grid;
     align-content: start;
+  }
+  .speaker {
+    display: inline-block;
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    margin-bottom: 1px;
   }
   .text p {
     margin: 0;

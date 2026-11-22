@@ -9,9 +9,11 @@ struct Segment: Codable, Identifiable, Equatable {
     let endedAt: Date
     let mode: String
     var language: String?
+    /// "me", "speaker 2", … when speaker detection is on (Speakers.swift)
+    var speaker: String? = nil
 
     enum CodingKeys: String, CodingKey {
-        case id, text, mode, language
+        case id, text, mode, language, speaker
         case startedAt = "started_at"
         case endedAt = "ended_at"
     }

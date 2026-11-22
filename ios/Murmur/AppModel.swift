@@ -43,6 +43,16 @@ final class AppModel: ObservableObject {
     @Published var token: String { didSet { Keychain.setToken(token) } }
     @Published var deviceName: String { didSet { defaults.set(deviceName, forKey: "deviceName") } }
     @Published var sensitivity: Double { didSet { defaults.set(sensitivity, forKey: "sensitivity") } }
+    @Published var speakerMode: SpeakerMode { didSet { defaults.set(speakerMode.rawValue, forKey: "speakerMode"); if speakerMode != .off { Task { await ensureSpeakers() } } } }
+    @Published private(set) var voiceProfile: VoiceProfile? = VoiceProfile.load()
+    @Published private(set) var enrollment: Enrollment = .idle
+
+    enum Enrollment: Equatable {
+        case idle
+        case recording(Int) // seconds left
+        case processing
+        case failed(String)
+    }
 
     // state
     @Published private(set) var phase: Phase = .starting
@@ -58,6 +68,7 @@ final class AppModel: ObservableObject {
     private let mic = MicCapture()
     private let transcriber = Transcriber()
     private let uploader = Uploader()
+    private let tagger = SpeakerTagger()
     private var segmenter: Segmenter?
     private var captureTask: Task<Void, Never>?
     private var recSamples: [Float] = []
@@ -74,6 +85,7 @@ final class AppModel: ObservableObject {
         token = Keychain.token()
         deviceName = defaults.string(forKey: "deviceName") ?? "iPhone"
         sensitivity = defaults.object(forKey: "sensitivity") as? Double ?? 0.75
+        speakerMode = SpeakerMode(rawValue: defaults.string(forKey: "speakerMode") ?? "") ?? .off
         recent = Self.loadRecent()
         observeAudioSession()
         Task { await start() }
@@ -118,6 +130,8 @@ final class AppModel: ObservableObject {
             }
             let vad = try await VadManager(config: VadConfig(defaultThreshold: Float(sensitivity)))
             segmenter = await Segmenter(vad: vad, threshold: Float(sensitivity))
+            await tagger.setProfile(voiceProfile?.embedding)
+            if speakerMode != .off { await ensureSpeakers() }
             ready = true
             apply()
             if pendingStart {
@@ -342,8 +356,15 @@ final class AppModel: ObservableObject {
         }
         // noise comes back as nothing or a lone mark
         guard text.unicodeScalars.filter({ CharacterSet.letters.contains($0) }).count >= 2 else { return }
+        var speaker: String?
+        if speakerMode != .off, await ensureSpeakers() {
+            let who = await tagger.tag(seg.samples, at: seg.startedAt)
+            // only my voice: everyone else is dropped here, never uploaded
+            if speakerMode == .onlyMe, voiceProfile != nil, !who.isMe { return }
+            speaker = who.speaker
+        }
         let segment = Segment(id: UUID().uuidString.lowercased(), text: text, startedAt: seg.startedAt,
-                              endedAt: seg.endedAt, mode: mode, language: nil)
+                              endedAt: seg.endedAt, mode: mode, language: nil, speaker: speaker)
         await uploader.enqueue(segment)
         recent.insert(segment, at: 0)
         if recent.count > 100 { recent.removeLast(recent.count - 100) }
@@ -360,6 +381,84 @@ final class AppModel: ObservableObject {
         for (seg, mode) in items {
             Task { await process(seg, mode: mode) }
         }
+    }
+
+    // MARK: - speakers
+
+    /// Loads the speaker model (CAM++, ~30 MB, downloaded once). False if it
+    /// can't be loaded; transcripts then go out without a speaker.
+    @discardableResult
+    func ensureSpeakers() async -> Bool {
+        if await tagger.ready { return true }
+        do {
+            try await tagger.load { _ in }
+            return true
+        } catch {
+            NSLog("speaker model: \(error)")
+            return false
+        }
+    }
+
+    /// Records the user's voice for 12 seconds and stores its embedding as
+    /// "me". Listening pauses meanwhile.
+    func enrollVoice() {
+        switch enrollment {
+        case .recording, .processing: return
+        default: break
+        }
+        Task {
+            guard await ensureMicPermission() else {
+                enrollment = .failed("Murmur may not use the microphone (Settings → Murmur).")
+                return
+            }
+            guard await ensureSpeakers() else {
+                enrollment = .failed("The speaker model could not be loaded.")
+                return
+            }
+            if phase == .recording { stopRecording() }
+            stopCapture()
+            var samples: [Float] = []
+            do {
+                try activateSession()
+                let stream = try mic.start()
+                let collect = Task { () -> [Float] in
+                    var acc: [Float] = []
+                    for await s in stream { acc += s }
+                    return acc
+                }
+                for left in stride(from: 12, to: 0, by: -1) {
+                    enrollment = .recording(left)
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                }
+                mic.stop() // finishes the stream
+                samples = await collect.value
+            } catch {
+                enrollment = .failed("Microphone: \(error.localizedDescription)")
+                apply()
+                return
+            }
+            enrollment = .processing
+            do {
+                guard samples.count > Segmenter.rate * 5 else {
+                    throw NSError(domain: "murmur", code: 3, userInfo: [NSLocalizedDescriptionKey: "Too little audio"])
+                }
+                let e = try await tagger.enrollmentEmbedding(samples)
+                let profile = VoiceProfile(embedding: e, createdAt: Date())
+                VoiceProfile.save(profile)
+                voiceProfile = profile
+                await tagger.setProfile(e)
+                enrollment = .idle
+            } catch {
+                enrollment = .failed(error.localizedDescription)
+            }
+            apply()
+        }
+    }
+
+    func deleteVoiceProfile() {
+        VoiceProfile.save(nil)
+        voiceProfile = nil
+        Task { await tagger.setProfile(nil) }
     }
 
     func flush(force: Bool = false) {
